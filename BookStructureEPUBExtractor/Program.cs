@@ -13,9 +13,9 @@ namespace BookStructureEPUBExtractor
     internal class Program
     {
         // Input Data using this schema: applicationDescription: 3.5.4.10|deviceModel: iPhone|language: français (Canada)|operatingSystemVersion: 8.4|region: États-Unis|sourceURL: http://acs.cdn.overdrive.com/ACSStore1/1071-1/370/E33/E5/%7B370E33E5-8B12-4521-B74A-79BC63D68687%7DFmt410.epub
-        private static string _metadataEndpoint = "http://metadatasvc.hq.overdrive.com/MetadataService/v2/titles/{0}";
-        private static string _outputDirectory = ConfigurationManager.AppSettings["OutputDirectory"];
-        private static string _productionAppVersion = ConfigurationManager.AppSettings["ProductionAppVersion"];
+        private static readonly string MetadataEndpoint = "http://metadatasvc.hq.overdrive.com/MetadataService/v2/titles/{0}";
+        private static readonly string OutputDirectory = ConfigurationManager.AppSettings["OutputDirectory"];
+        private static readonly string ProductionAppVersion = ConfigurationManager.AppSettings["ProductionAppVersion"];
 
         private static void Main(string[] args)
         {
@@ -31,13 +31,12 @@ namespace BookStructureEPUBExtractor
                 { "i", "Use to ignore previous version numbers (list is contained in appConfig).", v => { ignorePreviousVersions = true; } },
                 { "h|help", "Help and additional information about commands", v => showHelp = v != null },
                 { "<>", v => {
-                    switch (currentParameter) {
-                        case "n":
-                        case "f":
+                        if (currentParameter == "n" || currentParameter == "f")
+                        {
                             var items = v.Split(' ').ToList<string>();
                             items.ForEach(i => compareList.Add(i));
-                            break;
-                    }}
+                        }
+                    }
                 },
             };
 
@@ -63,7 +62,6 @@ namespace BookStructureEPUBExtractor
             catch (IOException ex)
             {
                 Console.WriteLine($"An error has occurred: {ex.Message}");
-                return;
             }
         }
 
@@ -107,20 +105,14 @@ namespace BookStructureEPUBExtractor
                     // Get the app version number if it is available.
                     var lineVersionNumber = line.Contains("applicationDescription")
                         ? line.Split('|')[0].Split(':')[1].Trim()
-                        : _productionAppVersion;
+                        : ProductionAppVersion;
 
                     // The current line's app version is contained in the list to ignore, move to the next line.
                     var skipLine = false;
                     if (versionsToIgnore != null && versionsToIgnore.Length > 0)
                     {
-                        foreach (var version in versionsToIgnore)
-                        {
-                            if (lineVersionNumber.IndexOf(version) > -1)
-                            {
-                                skipLine = true;
-                                break;
-                            }
-                        }
+                        if (versionsToIgnore.Any(version => lineVersionNumber.IndexOf(version, StringComparison.Ordinal) > -1))
+                            skipLine = true;
                     }
 
                     if (skipLine)
@@ -135,14 +127,11 @@ namespace BookStructureEPUBExtractor
                     else
                     {
                         // Grab string between %7B through %7D excluding %7D
-                        var pattern = "%7B.*?(?=%7D)";
-                        var titleInfo = string.Empty;
-
-                        var match = Regex.Match(line, pattern);
+                        var match = Regex.Match(line, "%7B.*?(?=%7D)");
 
                         if (match.Success) // Title was loaded in-app.
                         {
-                            titleInfo = match.Value.Substring(3); // Exclude "%7B".
+                            var titleInfo = match.Value.Substring(3);
 
                             // Determine if title is Open EPUB, if so add to Open EPUB list.
                             if (line.ToLower().Contains("openepubstore"))
@@ -166,7 +155,7 @@ namespace BookStructureEPUBExtractor
             }
 
             Console.WriteLine("Generating output...");
-            var outputLocation = string.Format($"{_outputDirectory}new_{DateTime.Now:MM-dd-yy-mm-s}.txt");
+            var outputLocation = string.Format($"{OutputDirectory}new_{DateTime.Now:MM-dd-yy-mm-s}.txt");
             using (var writer = new StreamWriter(outputLocation))
             {
                 // Output Adobe EPUB problem titles
@@ -211,7 +200,7 @@ namespace BookStructureEPUBExtractor
             // Generate output if there are new titles to be added.
             if (titlesToAdd.Count > 0)
             {
-                var outputLocation = string.Format($"{_outputDirectory}titlesToAdd_{DateTime.Now:MM-dd-yy-mm-s}.txt");
+                var outputLocation = string.Format($"{OutputDirectory}titlesToAdd_{DateTime.Now:MM-dd-yy-mm-s}.txt");
                 using (var writer = new StreamWriter(outputLocation))
                 {
                     titlesToAdd.ForEach(t => writer.WriteLine(t.ToString()));
@@ -234,7 +223,7 @@ namespace BookStructureEPUBExtractor
             var outputLineData = outputLineItem.Split('|');
 
             var positionInArray = Array.FindIndex(outputLineData, x => x.ToLower().Contains("applicationdescription"));
-            var applicationDescription = positionInArray > -1 ? new Version(outputLineData[positionInArray].Split(':')[1].Trim()) : new Version(_productionAppVersion);
+            var applicationDescription = positionInArray > -1 ? new Version(outputLineData[positionInArray].Split(':')[1].Trim()) : new Version(ProductionAppVersion);
 
             positionInArray = Array.FindIndex(outputLineData, x => x.ToLower().Contains("devicemodel"));
             var deviceModel = positionInArray > -1 ? outputLineData[positionInArray].Split(':')[1].Trim() : string.Empty;
@@ -274,7 +263,7 @@ namespace BookStructureEPUBExtractor
             var outputLineData = outputLineItem.Split('|');
 
             var positionInArray = Array.FindIndex(outputLineData, x => x.ToLower().Contains("applicationdescription"));
-            var applicationDescription = positionInArray > -1 ? new Version(outputLineData[positionInArray].Split(':')[1].Trim()) : new Version(_productionAppVersion);
+            var applicationDescription = positionInArray > -1 ? new Version(outputLineData[positionInArray].Split(':')[1].Trim()) : new Version(ProductionAppVersion);
 
             positionInArray = Array.FindIndex(outputLineData, x => x.ToLower().Contains("devicemodel"));
             var deviceModel = positionInArray > -1 ? outputLineData[positionInArray].Split(':')[1].Trim() : string.Empty;
@@ -374,13 +363,13 @@ namespace BookStructureEPUBExtractor
         /// <returns>JSON formatted metadata pertaining to the passed in titleID.</returns>
         private static string GetTitleMetadata(string titleId)
         {
-            var contents = string.Empty;
+            string contents;
             using (var client = new WebClient())
             {
                 client.Headers["Content-type"] = "application/json";
 
                 // Generate the correct URL (based on CRID)
-                contents = client.DownloadString(string.Format(_metadataEndpoint, titleId));
+                contents = client.DownloadString(string.Format(MetadataEndpoint, titleId));
             }
 
             return contents;
