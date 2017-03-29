@@ -6,7 +6,6 @@ using System.Linq;
 using System.Net;
 using System.Text.RegularExpressions;
 using System.Configuration;
-using MoreLinq;
 
 namespace BookStructureEPUBExtractor
 {
@@ -192,8 +191,10 @@ namespace BookStructureEPUBExtractor
         /// Creates a DiscoveredProblemTitle based on bar (|) delimited data from a csv file.
         /// </summary>
         /// <param name="outputLineItem">CSV line item containing the '|' formated data from GA.</param>
+        /// <param name="reserveId">Unique identifier of the problem title.</param>
+        /// <param name="formatType">Format of the problem title.</param>
         /// <returns>DiscoveredProblemTitle</returns>
-        private static DiscoveredProblemTitle ConstructDiscoveredProblemTitleFromCsvFile(string outputLineItem, string titleId, string formatType)
+        private static DiscoveredProblemTitle ConstructDiscoveredProblemTitleFromCsvFile(string outputLineItem, string reserveId, string formatType)
         {
             var outputLineData = outputLineItem.Split('|');
 
@@ -215,7 +216,7 @@ namespace BookStructureEPUBExtractor
             positionInArray = Array.FindIndex(outputLineData, x => x.ToLower().Contains("errortype"));
             var errorType = positionInArray > -1 ? outputLineData[positionInArray].Split(':')[1].Trim() : string.Empty;
 
-            var problemTitle = new DiscoveredProblemTitle(GetTitleMetadata(titleId), applicationDescription, formatType)
+            var problemTitle = new DiscoveredProblemTitle(GetTitleMetadata(reserveId), applicationDescription, formatType)
             {
                 DeviceModel = deviceModel,
                 Language = language,
@@ -282,9 +283,9 @@ namespace BookStructureEPUBExtractor
         /// <summary>
         /// Given a discoverable problem title's ID, calls the Metadata service to obtain additional metadata about the title.
         /// </summary>
-        /// <param name="titleId">Discoverable Problem Title's unique identifier.</param>
-        /// <returns>JSON formatted metadata pertaining to the passed in titleID.</returns>
-        private static string GetTitleMetadata(string titleId)
+        /// <param name="reserveId">Discoverable Problem Title's unique identifier.</param>
+        /// <returns>JSON formatted metadata pertaining to the passed in reserveId.</returns>
+        private static string GetTitleMetadata(string reserveId)
         {
             string contents;
             using (var client = new WebClient())
@@ -292,7 +293,7 @@ namespace BookStructureEPUBExtractor
                 client.Headers["Content-type"] = "application/json";
 
                 // Generate the correct URL (based on CRID)
-                contents = client.DownloadString(string.Format(ConfigurationManager.AppSettings["MetadataEndpointUrl"], titleId));
+                contents = client.DownloadString(string.Format(ConfigurationManager.AppSettings["MetadataEndpointUrl"], reserveId));
             }
 
             return contents;

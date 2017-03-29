@@ -25,7 +25,7 @@ namespace BookStructureEPUBExtractor
 
         public override string ToString()
         {
-            return $"{AppVersion} | {OperatingSystemVersion} | {Language} | {Region} | {ErrorType}";
+            return $"{AppVersion} | {OperatingSystemVersion} | {Language} | {Region}";
         }
 
         #endregion
@@ -72,7 +72,7 @@ namespace BookStructureEPUBExtractor
         #region Methods
         public override string ToString()
         {
-            return string.Format($"- [{Title}|{QaIntegrationUrl}] | {Crid} | {TitleId} | {FormatType} | {Publisher} | {base.ToString()} | {MarketplaceUrl}").TrimEnd(new char[] { ' ', '|' });
+            return string.Format($"- [{Title}|{QaIntegrationUrl}] | {Crid} | {TitleId} | {FormatType} | {base.ToString()} | {MarketplaceUrl} | {Publisher} | {ErrorType}").TrimEnd(' ', '|');
         }
 
         #endregion
@@ -102,7 +102,7 @@ namespace BookStructureEPUBExtractor
         #region Methods
         public override string ToString()
         {
-            return string.Format($"- {Data} | {base.ToString()}").TrimEnd(new char[] { ' ', '|' });
+            return string.Format($"- {Data} | {base.ToString()}").TrimEnd(' ', '|');
         }
 
         #endregion
