@@ -61,18 +61,18 @@ namespace BookStructureEPUBExtractor
 
         public string Publisher { get; set; }
 
-        public string QaIntegrationUrl => string.Format($"https://qaintegration.overdrive.com/media/{TitleId}");
+        public string QaIntegrationUrl => $"https://qaintegration.overdrive.com/media/{TitleId}";
         
-        public string MarketplaceUrl => string.Format($"[Marketplace|https://marketplace.overdrive.com/Marketplace/OneCopyOneUserAndMeteredAccess/TitleDetails/{Crid}]");
+        public string MarketplaceUrl => $"[Marketplace|https://marketplace.overdrive.com/Marketplace/OneCopyOneUserAndMeteredAccess/TitleDetails/{Crid}]";
 
-        public string MyDigitalLibraryUrl => string.Format($"[My Digital Library|http://mydigitallibrary.lib.overdrive.com/ContentDetails.htm?id={Crid}]");
+        public string MyDigitalLibraryUrl => $"[My Digital Library|http://mydigitallibrary.lib.overdrive.com/ContentDetails.htm?id={Crid}]";
 
         #endregion
 
         #region Methods
         public override string ToString()
         {
-            return string.Format($"- [{Title}|{QaIntegrationUrl}] | {Crid} | {TitleId} | {FormatType} | {base.ToString()} | {MarketplaceUrl} | {Publisher} | {ErrorType}").TrimEnd(' ', '|');
+            return $"- [{Title}|{QaIntegrationUrl}] | {Crid} | {TitleId} | {FormatType} | {base.ToString()} | {MarketplaceUrl} | {Publisher} | {ErrorType}".TrimEnd(' ', '|');
         }
 
         #endregion
@@ -102,7 +102,7 @@ namespace BookStructureEPUBExtractor
         #region Methods
         public override string ToString()
         {
-            return string.Format($"- {Data} | {base.ToString()}").TrimEnd(' ', '|');
+            return $"- {Data} | {base.ToString()}".TrimEnd(' ', '|');
         }
 
         #endregion

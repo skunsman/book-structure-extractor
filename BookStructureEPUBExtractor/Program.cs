@@ -72,15 +72,15 @@ namespace BookStructureEPUBExtractor
             var versionsToIgnore = ignorePrevoiusVersions ? ConfigurationManager.AppSettings["VersionsToIgnore"].Split('|') : null;
 
             // Gather known titles to compare potential new titles against.
-            var knownTitlesFile = new FileInfo(string.Format($"{OutputDirectory}known.txt"));
+            var knownTitlesFile = new FileInfo($"{OutputDirectory}known.txt");
             var knownProblemTitles = new List<string>();
             var knownFileContents = string.Empty;
             
             if (knownTitlesFile.Exists)
             {
-                using (var r = new StreamReader(knownTitlesFile.FullName))
+                using (var reader = new StreamReader(knownTitlesFile.FullName))
                 {
-                    var line = r.ReadLine();
+                    var line = reader.ReadLine();
                     if (!string.IsNullOrEmpty(line))
                         knownFileContents = line;
                 }
@@ -94,62 +94,67 @@ namespace BookStructureEPUBExtractor
             // Confirm the file and directory exist.
             if (!File.Exists(csvFilepath))
                 throw new IOException("The specified file and/or directory does not exist: " + csvFilepath);
-
-            var reader = new StreamReader(File.OpenRead(csvFilepath));
-
+            
             // Read through the csv file
-            while (!reader.EndOfStream)
+            using (var reader = new StreamReader(csvFilepath))
             {
-                // Grab the current line
-                var line = reader.ReadLine();
-
-                // Continue if current line contains sourceURL or line is empty/null.
-                if (string.IsNullOrEmpty(line) || !line.Contains("sourceURL"))
-                    continue;
-
-                // Get the app version number if it is available.
-                var lineVersionNumber = line.Contains("applicationDescription")
-                    ? line.Split('|')[0].Split(':')[1].Trim()
-                    : ProductionAppVersion;
-
-                // The current line's app version is contained in the list to ignore, move to the next line.
-                if (versionsToIgnore != null && versionsToIgnore.Length > 0)
+                while (!reader.EndOfStream)
                 {
-                    if (versionsToIgnore.Any(version => lineVersionNumber.IndexOf(version, StringComparison.Ordinal) > -1))
-                        continue;
-                }
+                    // Grab the current line
+                    var line = reader.ReadLine();
 
-                // Ignore line if it is a pdf.
-                if (line.ToLower().Contains(".pdf"))
-                    continue;
-
-                // Grab string between %7B through %7D excluding %7D.
-                var match = Regex.Match(line, "%7B.*?(?=%7D)");
-
-                if (match.Success) // Title was loaded in-app.
-                {
-                    var titleInfo = match.Value.Substring(3);
-
-                    // Current line is already known and reported.
-                    if (knownProblemTitles.Count > 0 && knownProblemTitles.Contains(titleInfo))
+                    // Continue if current line contains sourceURL or line is empty/null.
+                    if (string.IsNullOrEmpty(line) || !line.Contains("sourceURL"))
                         continue;
 
-                    // Determine if title is Open EPUB, if so add to Open EPUB list.
-                    if (line.ToLower().Contains("openepubstore"))
+                    // Get the app version number if it is available.
+                    var lineVersionNumber = line.Contains("applicationDescription")
+                        ? line.Split('|')[0].Split(':')[1].Trim()
+                        : ProductionAppVersion;
+
+                    // The current line's app version is contained in the list to ignore, move to the next line.
+                    if (versionsToIgnore != null && versionsToIgnore.Length > 0)
                     {
-                        if (!problemOpenEpubTitlesInfo.ContainsKey(titleInfo))
-                            problemOpenEpubTitlesInfo.Add(titleInfo, ConstructDiscoveredProblemTitleFromCsvFile(line, titleInfo, "open"));
+                        if (
+                            versionsToIgnore.Any(
+                                version => lineVersionNumber.IndexOf(version, StringComparison.Ordinal) > -1))
+                            continue;
                     }
-                    // Determine if title is Adobe EPUB, if so add to Adobe EPUB list.
-                    else
+
+                    // Ignore line if it is a pdf.
+                    if (line.ToLower().Contains(".pdf"))
+                        continue;
+
+                    // Grab string between %7B through %7D excluding %7D.
+                    var match = Regex.Match(line, "%7B.*?(?=%7D)");
+
+                    if (match.Success) // Title was loaded in-app.
                     {
-                        if (!problemEpubTitlesInfo.ContainsKey(titleInfo))
-                            problemEpubTitlesInfo.Add(titleInfo, ConstructDiscoveredProblemTitleFromCsvFile(line, titleInfo, "adobe"));
+                        var titleInfo = match.Value.Substring(3);
+
+                        // Current line is already known and reported.
+                        if (knownProblemTitles.Count > 0 && knownProblemTitles.Contains(titleInfo))
+                            continue;
+
+                        // Determine if title is Open EPUB, if so add to Open EPUB list.
+                        if (line.ToLower().Contains("openepubstore"))
+                        {
+                            if (!problemOpenEpubTitlesInfo.ContainsKey(titleInfo))
+                                problemOpenEpubTitlesInfo.Add(titleInfo,
+                                    ConstructDiscoveredProblemTitleFromCsvFile(line, titleInfo, "open"));
+                        }
+                        // Determine if title is Adobe EPUB, if so add to Adobe EPUB list.
+                        else
+                        {
+                            if (!problemEpubTitlesInfo.ContainsKey(titleInfo))
+                                problemEpubTitlesInfo.Add(titleInfo,
+                                    ConstructDiscoveredProblemTitleFromCsvFile(line, titleInfo, "adobe"));
+                        }
                     }
-                }
-                else // title side-loaded
-                {
-                    sideLoadedTitles.Add(ConstructUndiscoveredProblemTitleFromCsvFile(line));
+                    else // title side-loaded
+                    {
+                        sideLoadedTitles.Add(ConstructUndiscoveredProblemTitleFromCsvFile(line));
+                    }
                 }
             }
 
@@ -165,7 +170,7 @@ namespace BookStructureEPUBExtractor
             if (problemEpubTitlesInfo.Count > 0 || problemOpenEpubTitlesInfo.Count > 0)
             {
                 Console.WriteLine("Generating new title output...");
-                var outputLocation = string.Format($"{OutputDirectory}{DateTime.UtcNow:yyyyMMddHHmmss}-titles-to-add.txt");
+                var outputLocation = $"{OutputDirectory}{DateTime.UtcNow:yyyyMMddHHmmss}-titles-to-add.txt";
                 using (var writer = new StreamWriter(outputLocation))
                 {
                     // Output Adobe EPUB problem titles
@@ -177,7 +182,7 @@ namespace BookStructureEPUBExtractor
                         writer.WriteLine(title.Value.ToString());
 
                     // Output Side-loaded titles
-                    writer.WriteLine("{0}{0}----{0}Side-loaded Titles", Environment.NewLine);
+                    writer.WriteLine("{0}{0}----{0}h5. Side-loaded Titles", Environment.NewLine);
                     sideLoadedTitles.ForEach(t => writer.WriteLine(t.ToString()));
 
                     Console.WriteLine("Output generated in the following location: " + outputLocation);
@@ -185,6 +190,9 @@ namespace BookStructureEPUBExtractor
             }
             else
                 Console.WriteLine("There were no new titles to add.");
+
+            // Archive the input file.
+            ArchiveFile(csvFilepath);
         }
 
         /// <summary>
@@ -297,6 +305,23 @@ namespace BookStructureEPUBExtractor
             }
 
             return contents;
+        }
+
+        /// <summary>
+        /// Moves a given file to the archive directory and appends a datetime stamp to it.
+        /// </summary>
+        /// <param name="fileToMove">Directory and filename of the file to archive.</param>
+        private static void ArchiveFile(string fileToMove)
+        {
+            var archiveDirectory = ConfigurationManager.AppSettings["ArchiveDirectory"];
+
+            if (File.Exists(fileToMove))
+                if (Directory.Exists(archiveDirectory))
+                    File.Move(fileToMove, Path.Combine(archiveDirectory, $"{DateTime.UtcNow:yyyyMMddHHmmss}-{Path.GetFileName(fileToMove)}"));
+                else
+                    Console.WriteLine($"Directory does not exists: {archiveDirectory}");
+            else
+                Console.WriteLine($"Could not find the following file to move: {fileToMove}");
         }
     }
 }
