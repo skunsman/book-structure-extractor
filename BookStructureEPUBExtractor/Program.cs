@@ -6,6 +6,7 @@ using System.Linq;
 using System.Net;
 using System.Text.RegularExpressions;
 using System.Configuration;
+using System.Text;
 
 namespace BookStructureEPUBExtractor
 {
@@ -22,10 +23,19 @@ namespace BookStructureEPUBExtractor
 
             var options = new OptionSet()
             {
-                { "d|discovery=", "File path of the CSV file containing titles to gather information about.", v => { currentParameter = "d"; discoveryFileDirectory = v; } },
-                { "i", "Use to ignore previous version numbers (list is contained in appConfig).", v => { ignorePreviousVersions = true; } },
-                { "h|help", "Help and additional information about commands", v => showHelp = v != null },
-                { "<>", v => {} }
+                {
+                    "d|discovery=", "File path of the CSV file containing titles to gather information about.", v =>
+                    {
+                        currentParameter = "d";
+                        discoveryFileDirectory = v;
+                    }
+                },
+                {
+                    "i", "Use to ignore previous version numbers (list is contained in appConfig).",
+                    v => { ignorePreviousVersions = true; }
+                },
+                {"h|help", "Help and additional information about commands", v => showHelp = v != null},
+                {"<>", v => { }}
             };
 
             options.Parse(args);
@@ -69,13 +79,15 @@ namespace BookStructureEPUBExtractor
             var sideLoadedTitles = new List<UndiscoveredProblemTitle>();
 
             // If ignoring previous versions, then provide list of versions to ignore, otherwise leave empty.
-            var versionsToIgnore = ignorePrevoiusVersions ? ConfigurationManager.AppSettings["VersionsToIgnore"].Split('|') : null;
+            var versionsToIgnore = ignorePrevoiusVersions
+                ? ConfigurationManager.AppSettings["VersionsToIgnore"].Split('|')
+                : null;
 
             // Gather known titles to compare potential new titles against.
             var knownTitlesFile = new FileInfo($"{OutputDirectory}known.txt");
             var knownProblemTitles = new List<string>();
             var knownFileContents = string.Empty;
-            
+
             if (knownTitlesFile.Exists)
             {
                 using (var reader = new StreamReader(knownTitlesFile.FullName))
@@ -94,7 +106,7 @@ namespace BookStructureEPUBExtractor
             // Confirm the file and directory exist.
             if (!File.Exists(csvFilepath))
                 throw new IOException("The specified file and/or directory does not exist: " + csvFilepath);
-            
+
             // Read through the csv file
             using (var reader = new StreamReader(csvFilepath))
             {
@@ -113,13 +125,9 @@ namespace BookStructureEPUBExtractor
                         : ProductionAppVersion;
 
                     // The current line's app version is contained in the list to ignore, move to the next line.
-                    if (versionsToIgnore != null && versionsToIgnore.Length > 0)
-                    {
-                        if (
-                            versionsToIgnore.Any(
-                                version => lineVersionNumber.IndexOf(version, StringComparison.Ordinal) > -1))
+                    if ((versionsToIgnore != null) && (versionsToIgnore.Length > 0))
+                        if (versionsToIgnore.Any(version => lineVersionNumber.IndexOf(version, StringComparison.Ordinal) > -1))
                             continue;
-                    }
 
                     // Ignore line if it is a pdf.
                     if (line.ToLower().Contains(".pdf"))
@@ -133,7 +141,7 @@ namespace BookStructureEPUBExtractor
                         var titleInfo = match.Value.Substring(3);
 
                         // Current line is already known and reported.
-                        if (knownProblemTitles.Count > 0 && knownProblemTitles.Contains(titleInfo))
+                        if ((knownProblemTitles.Count > 0) && knownProblemTitles.Contains(titleInfo))
                             continue;
 
                         // Determine if title is Open EPUB, if so add to Open EPUB list.
@@ -167,7 +175,7 @@ namespace BookStructureEPUBExtractor
             }
 
             // If there are no new titles, don't create an empty output file.
-            if (problemEpubTitlesInfo.Count > 0 || problemOpenEpubTitlesInfo.Count > 0)
+            if ((problemEpubTitlesInfo.Count > 0) || (problemOpenEpubTitlesInfo.Count > 0))
             {
                 Console.WriteLine("Generating new title output...");
                 var outputLocation = $"{OutputDirectory}{DateTime.UtcNow:yyyyMMddHHmmss}-titles-to-add.txt";
@@ -207,7 +215,9 @@ namespace BookStructureEPUBExtractor
             var outputLineData = outputLineItem.Split('|');
 
             var positionInArray = Array.FindIndex(outputLineData, x => x.ToLower().Contains("applicationdescription"));
-            var applicationDescription = positionInArray > -1 ? new Version(outputLineData[positionInArray].Split(':')[1].Trim()) : new Version(ProductionAppVersion);
+            var applicationDescription = positionInArray > -1
+                ? new Version(outputLineData[positionInArray].Split(':')[1].Trim())
+                : new Version(ProductionAppVersion);
 
             positionInArray = Array.FindIndex(outputLineData, x => x.ToLower().Contains("devicemodel"));
             var deviceModel = positionInArray > -1 ? outputLineData[positionInArray].Split(':')[1].Trim() : string.Empty;
@@ -216,7 +226,9 @@ namespace BookStructureEPUBExtractor
             var language = positionInArray > -1 ? outputLineData[positionInArray].Split(':')[1].Trim() : string.Empty;
 
             positionInArray = Array.FindIndex(outputLineData, x => x.ToLower().Contains("operatingsystemversion"));
-            var orperatingSystemVersion = positionInArray > -1 ? new Version(outputLineData[positionInArray].Split(':')[1].Trim()) : new Version("9.3.1");
+            var orperatingSystemVersion = positionInArray > -1
+                ? new Version(outputLineData[positionInArray].Split(':')[1].Trim())
+                : new Version("9.3.1");
 
             positionInArray = Array.FindIndex(outputLineData, x => x.ToLower().Contains("region"));
             var region = positionInArray > -1 ? outputLineData[positionInArray].Split(':')[1].Trim() : string.Empty;
@@ -247,7 +259,9 @@ namespace BookStructureEPUBExtractor
             var outputLineData = outputLineItem.Split('|');
 
             var positionInArray = Array.FindIndex(outputLineData, x => x.ToLower().Contains("applicationdescription"));
-            var applicationDescription = positionInArray > -1 ? new Version(outputLineData[positionInArray].Split(':')[1].Trim()) : new Version(ProductionAppVersion);
+            var applicationDescription = positionInArray > -1
+                ? new Version(outputLineData[positionInArray].Split(':')[1].Trim())
+                : new Version(ProductionAppVersion);
 
             positionInArray = Array.FindIndex(outputLineData, x => x.ToLower().Contains("devicemodel"));
             var deviceModel = positionInArray > -1 ? outputLineData[positionInArray].Split(':')[1].Trim() : string.Empty;
@@ -256,7 +270,9 @@ namespace BookStructureEPUBExtractor
             var language = positionInArray > -1 ? outputLineData[positionInArray].Split(':')[1].Trim() : string.Empty;
 
             positionInArray = Array.FindIndex(outputLineData, x => x.ToLower().Contains("operatingsystemversion"));
-            var orperatingSystemVersion = positionInArray > -1 ? new Version(outputLineData[positionInArray].Split(':')[1].Trim()) : new Version("9.3.1");
+            var orperatingSystemVersion = positionInArray > -1
+                ? new Version(outputLineData[positionInArray].Split(':')[1].Trim())
+                : new Version("9.3.1");
 
             positionInArray = Array.FindIndex(outputLineData, x => x.ToLower().Contains("region"));
             var region = positionInArray > -1 ? outputLineData[positionInArray].Split(':')[1].Trim() : string.Empty;
@@ -299,6 +315,7 @@ namespace BookStructureEPUBExtractor
             using (var client = new WebClient())
             {
                 client.Headers["Content-type"] = "application/json";
+                client.Encoding = Encoding.UTF8;
 
                 // Generate the correct URL (based on CRID)
                 contents = client.DownloadString(string.Format(ConfigurationManager.AppSettings["MetadataEndpointUrl"], reserveId));
@@ -317,7 +334,9 @@ namespace BookStructureEPUBExtractor
 
             if (File.Exists(fileToMove))
                 if (Directory.Exists(archiveDirectory))
-                    File.Move(fileToMove, Path.Combine(archiveDirectory, $"{DateTime.UtcNow:yyyyMMddHHmmss}-{Path.GetFileName(fileToMove)}"));
+                    File.Move(fileToMove,
+                        Path.Combine(archiveDirectory,
+                            $"{DateTime.UtcNow:yyyyMMddHHmmss}-{Path.GetFileName(fileToMove)}"));
                 else
                     Console.WriteLine($"Directory does not exists: {archiveDirectory}");
             else

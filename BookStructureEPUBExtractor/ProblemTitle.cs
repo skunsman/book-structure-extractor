@@ -34,6 +34,7 @@ namespace BookStructureEPUBExtractor
     public class DiscoveredProblemTitle : ProblemTitle
     {
         #region Constructors
+
         public DiscoveredProblemTitle()
         { }
 
@@ -51,6 +52,7 @@ namespace BookStructureEPUBExtractor
         #endregion
 
         #region Properties
+
         public string Title { get; set; }
 
         public string TitleId { get; set; }
@@ -62,7 +64,7 @@ namespace BookStructureEPUBExtractor
         public string Publisher { get; set; }
 
         public string QaIntegrationUrl => $"https://qaintegration.overdrive.com/media/{TitleId}";
-        
+
         public string MarketplaceUrl => $"[Marketplace|https://marketplace.overdrive.com/Marketplace/OneCopyOneUserAndMeteredAccess/TitleDetails/{Crid}]";
 
         public string MyDigitalLibraryUrl => $"[My Digital Library|http://mydigitallibrary.lib.overdrive.com/ContentDetails.htm?id={Crid}]";
@@ -70,6 +72,7 @@ namespace BookStructureEPUBExtractor
         #endregion
 
         #region Methods
+
         public override string ToString()
         {
             return $"- [{Title}|{QaIntegrationUrl}] | {Crid} | {TitleId} | {FormatType} | {base.ToString()} | {MarketplaceUrl} | {Publisher} | {ErrorType}".TrimEnd(' ', '|');
@@ -100,6 +103,7 @@ namespace BookStructureEPUBExtractor
         #endregion
 
         #region Methods
+
         public override string ToString()
         {
             return $"- {Data} | {base.ToString()}".TrimEnd(' ', '|');
