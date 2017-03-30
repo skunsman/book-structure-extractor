@@ -6,39 +6,36 @@ using System.Linq;
 using System.Net;
 using System.Text.RegularExpressions;
 using System.Configuration;
-using MoreLinq;
+using System.Text;
 
 namespace BookStructureEPUBExtractor
 {
     internal class Program
     {
-        // Input Data using this schema: applicationDescription: 3.5.4.10|deviceModel: iPhone|language: français (Canada)|operatingSystemVersion: 8.4|region: États-Unis|sourceURL: http://acs.cdn.overdrive.com/ACSStore1/1071-1/370/E33/E5/%7B370E33E5-8B12-4521-B74A-79BC63D68687%7DFmt410.epub
-        private static string _metadataEndpoint = "http://metadatasvc.hq.overdrive.com/MetadataService/v2/titles/{0}";
-        private static string _outputDirectory = ConfigurationManager.AppSettings["OutputDirectory"];
-        private static string _productionAppVersion = ConfigurationManager.AppSettings["ProductionAppVersion"];
+        // Input Data using this schema: applicationDescription: 3.6.4.4|deviceModel: iPad|language: English(United States)|operatingSystemVersion: 10.2.1|region: United States|errorType: SpineMissing|sourceURL: https://acs.cdn.overdrive.com/ACSStore1/0293-1/648/F2E/4F/%7B648F2E4F-F13A-4ED7-9D74-734526C55082%7DFmt410.epub
+        private static readonly string OutputDirectory = ConfigurationManager.AppSettings["OutputDirectory"];
+        private static readonly string ProductionAppVersion = ConfigurationManager.AppSettings["ProductionAppVersion"];
 
         private static void Main(string[] args)
         {
             string discoveryFileDirectory = null, currentParameter = string.Empty;
-            var compareList = new List<string>();
             bool showHelp = false, ignorePreviousVersions = false;
 
             var options = new OptionSet()
             {
-                { "d|discovery=", "File path of the CSV file containing titles to gather information about.", v => { currentParameter = "d"; discoveryFileDirectory = v; } },
-                { "n|new=", "Compare to lists of titles. Outputing a list of new titles to be added.", v => { currentParameter = "n"; compareList.Add(v); } },
-                { "f|fixed=", "Compare files - a new list of problems titles against an exisiting list of fixed problem titles.", v => { currentParameter = "f"; compareList.Add(v); } },
-                { "i", "Use to ignore previous version numbers (list is contained in appConfig).", v => { ignorePreviousVersions = true; } },
-                { "h|help", "Help and additional information about commands", v => showHelp = v != null },
-                { "<>", v => {
-                    switch (currentParameter) {
-                        case "n":
-                        case "f":
-                            var items = v.Split(' ').ToList<string>();
-                            items.ForEach(i => compareList.Add(i));
-                            break;
-                    }}
+                {
+                    "d|discovery=", "File path of the CSV file containing titles to gather information about.", v =>
+                    {
+                        currentParameter = "d";
+                        discoveryFileDirectory = v;
+                    }
                 },
+                {
+                    "i", "Use to ignore previous version numbers (list is contained in appConfig).",
+                    v => { ignorePreviousVersions = true; }
+                },
+                {"h|help", "Help and additional information about commands", v => showHelp = v != null},
+                {"<>", v => { }}
             };
 
             options.Parse(args);
@@ -49,21 +46,17 @@ namespace BookStructureEPUBExtractor
                 return;
             }
 
-            if (string.IsNullOrEmpty(discoveryFileDirectory) && compareList.Count == 0)
+            if (string.IsNullOrEmpty(discoveryFileDirectory))
                 DisplayHelp(options);
 
             try
             {
                 if (!string.IsNullOrEmpty(discoveryFileDirectory) && currentParameter.Equals("d"))
                     DiscoverProblemTitleData(discoveryFileDirectory, ignorePreviousVersions);
-
-                if (compareList.Count > 0 && currentParameter.Equals("n"))
-                    OutputNewTitlesToAdd(compareList);
             }
             catch (IOException ex)
             {
                 Console.WriteLine($"An error has occurred: {ex.Message}");
-                return;
             }
         }
 
@@ -81,160 +74,150 @@ namespace BookStructureEPUBExtractor
         /// <remarks>Generates an text file containing a list of the different type of problem titles.</remarks>
         private static void DiscoverProblemTitleData(string csvFilepath, bool ignorePrevoiusVersions)
         {
-            // Confirm the file and directory exist.
-            if (!File.Exists(csvFilepath))
-                throw new IOException("The specified file and/or directory does not exist: " + csvFilepath);
-
-            var reader = new StreamReader(File.OpenRead(csvFilepath));
             var problemEpubTitlesInfo = new Dictionary<string, DiscoveredProblemTitle>();
             var problemOpenEpubTitlesInfo = new Dictionary<string, DiscoveredProblemTitle>();
             var sideLoadedTitles = new List<UndiscoveredProblemTitle>();
 
             // If ignoring previous versions, then provide list of versions to ignore, otherwise leave empty.
-            var versionsToIgnore = ignorePrevoiusVersions ? ConfigurationManager.AppSettings["VersionsToIgnore"].Split('|') : null;
+            var versionsToIgnore = ignorePrevoiusVersions
+                ? ConfigurationManager.AppSettings["VersionsToIgnore"].Split('|')
+                : null;
+
+            // Gather known titles to compare potential new titles against.
+            var knownTitlesFile = new FileInfo($"{OutputDirectory}known.txt");
+            var knownProblemTitles = new List<string>();
+            var knownFileContents = string.Empty;
+
+            if (knownTitlesFile.Exists)
+            {
+                using (var reader = new StreamReader(knownTitlesFile.FullName))
+                {
+                    var line = reader.ReadLine();
+                    if (!string.IsNullOrEmpty(line))
+                        knownFileContents = line;
+                }
+
+                if (!string.IsNullOrEmpty(knownFileContents))
+                    knownProblemTitles = knownFileContents.Split('|').ToList();
+            }
 
             Console.WriteLine("Processing data...");
 
-            // Read through the csv file
-            while (!reader.EndOfStream)
-            {
-                // Grab the current line
-                var line = reader.ReadLine();
+            // Confirm the file and directory exist.
+            if (!File.Exists(csvFilepath))
+                throw new IOException("The specified file and/or directory does not exist: " + csvFilepath);
 
-                // Continue if current line matches string
-                if (line.Contains("sourceURL"))
+            // Read through the csv file
+            using (var reader = new StreamReader(csvFilepath))
+            {
+                while (!reader.EndOfStream)
                 {
+                    // Grab the current line
+                    var line = reader.ReadLine();
+
+                    // Continue if current line contains sourceURL or line is empty/null.
+                    if (string.IsNullOrEmpty(line) || !line.Contains("sourceURL"))
+                        continue;
+
                     // Get the app version number if it is available.
                     var lineVersionNumber = line.Contains("applicationDescription")
                         ? line.Split('|')[0].Split(':')[1].Trim()
-                        : _productionAppVersion;
+                        : ProductionAppVersion;
 
                     // The current line's app version is contained in the list to ignore, move to the next line.
-                    var skipLine = false;
-                    if (versionsToIgnore != null && versionsToIgnore.Length > 0)
-                    {
-                        foreach (var version in versionsToIgnore)
-                        {
-                            if (lineVersionNumber.IndexOf(version) > -1)
-                            {
-                                skipLine = true;
-                                break;
-                            }
-                        }
-                    }
+                    if ((versionsToIgnore != null) && (versionsToIgnore.Length > 0))
+                        if (versionsToIgnore.Any(version => lineVersionNumber.IndexOf(version, StringComparison.Ordinal) > -1))
+                            continue;
 
-                    if (skipLine)
+                    // Ignore line if it is a pdf.
+                    if (line.ToLower().Contains(".pdf"))
                         continue;
 
-                    // Add to list of PDF titles if containing pdf extension.
-                    if (line.ToLower().Contains(".pdf"))
+                    // Grab string between %7B through %7D excluding %7D.
+                    var match = Regex.Match(line, "%7B.*?(?=%7D)");
+
+                    if (match.Success) // Title was loaded in-app.
                     {
-                        //pdfTitles.Add(new UndiscoveredProblemTitle(line.Split('|')[1].Trim(), lineVersionNumber));
-                        //pdfTitles.Add(ConstructUndiscoveredProblemTitleFromCsvFile(line));
+                        var titleInfo = match.Value.Substring(3);
+
+                        // Current line is already known and reported.
+                        if ((knownProblemTitles.Count > 0) && knownProblemTitles.Contains(titleInfo))
+                            continue;
+
+                        // Determine if title is Open EPUB, if so add to Open EPUB list.
+                        if (line.ToLower().Contains("openepubstore"))
+                        {
+                            if (!problemOpenEpubTitlesInfo.ContainsKey(titleInfo))
+                                problemOpenEpubTitlesInfo.Add(titleInfo,
+                                    ConstructDiscoveredProblemTitleFromCsvFile(line, titleInfo, "open"));
+                        }
+                        // Determine if title is Adobe EPUB, if so add to Adobe EPUB list.
+                        else
+                        {
+                            if (!problemEpubTitlesInfo.ContainsKey(titleInfo))
+                                problemEpubTitlesInfo.Add(titleInfo,
+                                    ConstructDiscoveredProblemTitleFromCsvFile(line, titleInfo, "adobe"));
+                        }
                     }
-                    else
+                    else // title side-loaded
                     {
-                        // Grab string between %7B through %7D excluding %7D
-                        var pattern = "%7B.*?(?=%7D)";
-                        var titleInfo = string.Empty;
-
-                        var match = Regex.Match(line, pattern);
-
-                        if (match.Success) // Title was loaded in-app.
-                        {
-                            titleInfo = match.Value.Substring(3); // Exclude "%7B".
-
-                            // Determine if title is Open EPUB, if so add to Open EPUB list.
-                            if (line.ToLower().Contains("openepubstore"))
-                            {
-                                if (!problemOpenEpubTitlesInfo.ContainsKey(titleInfo))
-                                    problemOpenEpubTitlesInfo.Add(titleInfo, ConstructDiscoveredProblemTitleFromCsvFile(line, titleInfo, "open"));
-                            }
-                            // Determine if title is Adobe EPUB, if so add to Adobe EPUB list.
-                            else
-                            {
-                                if (!problemEpubTitlesInfo.ContainsKey(titleInfo))
-                                    problemEpubTitlesInfo.Add(titleInfo, ConstructDiscoveredProblemTitleFromCsvFile(line, titleInfo, "adobe"));
-                            }
-                        }
-                        else // title side-loaded
-                        {
-                            sideLoadedTitles.Add(ConstructUndiscoveredProblemTitleFromCsvFile(line));
-                        }
+                        sideLoadedTitles.Add(ConstructUndiscoveredProblemTitleFromCsvFile(line));
                     }
                 }
             }
 
-            Console.WriteLine("Generating output...");
-            var outputLocation = string.Format($"{_outputDirectory}new_{DateTime.Now:MM-dd-yy-mm-s}.txt");
-            using (var writer = new StreamWriter(outputLocation))
+            // Update known titles file.
+            Console.WriteLine("Generating known title output...");
+            using (var writer = new StreamWriter(knownTitlesFile.FullName, true))
             {
-                // Output Adobe EPUB problem titles
-                foreach (var title in problemEpubTitlesInfo)
-                    writer.WriteLine(title.Value.ToString());
-
-                //// Output Open EPUB problem titles
-                foreach (var title in problemOpenEpubTitlesInfo)
-                    writer.WriteLine(title.Value.ToString());
-
-                // Output PDF titles
-                //writer.WriteLine("{0}{0}----{0}PDF Titles", Environment.NewLine);
-                //pdfTitles.ForEach(t => writer.WriteLine(t.ToString()));
-
-                // Output Side-loaded titles
-                writer.WriteLine("{0}{0}----{0}Side-loaded Titles", Environment.NewLine);
-                sideLoadedTitles.ForEach(t => writer.WriteLine(t.ToString()));
-
-                Console.WriteLine("Output generated in the following location: " + outputLocation);
+                foreach (var newTitle in problemEpubTitlesInfo)
+                    writer.Write(newTitle.Key + '|');
             }
-        }
 
-        /// <summary>
-        /// Given two lists of discoveredProblemTitles, compares the contents of each to determine whether new titles need to investigated.
-        /// </summary>
-        /// <param name="listsToCompare">Two file directories leading to text files containing a list of discovered problem titles. First list - Known titles. Second list - New titles (from GA report).</param>
-        /// <remarks>If new problem titles exist, a text file is generated containing the list of new titles to be investigated.</remarks>
-        private static void OutputNewTitlesToAdd(List<string> listsToCompare)
-        {
-            string newTitlesFilepath = listsToCompare[0], existingTitlesFilepath = listsToCompare[1];
-
-            var newTitles = ReadFileForDiscoveredProblemTitles(newTitlesFilepath);
-            var existingTitles = ReadFileForDiscoveredProblemTitles(existingTitlesFilepath);
-
-            // List of existingTitles' TitleIds
-            var titleIds = new HashSet<string>(existingTitles.Select(t => t.TitleId));
-
-            // Gather titles from the new list that do not exist in the existing list.
-            var titlesToAdd = newTitles.Where(t => !titleIds.Contains(t.TitleId)).ToList();
-            var outputGenerated = false;
-
-            // Generate output if there are new titles to be added.
-            if (titlesToAdd.Count > 0)
+            // If there are no new titles, don't create an empty output file.
+            if ((problemEpubTitlesInfo.Count > 0) || (problemOpenEpubTitlesInfo.Count > 0))
             {
-                var outputLocation = string.Format($"{_outputDirectory}titlesToAdd_{DateTime.Now:MM-dd-yy-mm-s}.txt");
+                Console.WriteLine("Generating new title output...");
+                var outputLocation = $"{OutputDirectory}{DateTime.UtcNow:yyyyMMddHHmmss}-titles-to-add.txt";
                 using (var writer = new StreamWriter(outputLocation))
                 {
-                    titlesToAdd.ForEach(t => writer.WriteLine(t.ToString()));
-                    Console.WriteLine("A list of new titles to add was generated in the following location: " + outputLocation);
-                    outputGenerated = true;
+                    // Output Adobe EPUB problem titles
+                    foreach (var title in problemEpubTitlesInfo)
+                        writer.WriteLine(title.Value.ToString());
+
+                    //// Output Open EPUB problem titles
+                    foreach (var title in problemOpenEpubTitlesInfo)
+                        writer.WriteLine(title.Value.ToString());
+
+                    // Output Side-loaded titles
+                    writer.WriteLine("{0}{0}----{0}h5. Side-loaded Titles", Environment.NewLine);
+                    sideLoadedTitles.ForEach(t => writer.WriteLine(t.ToString()));
+
+                    Console.WriteLine("Output generated in the following location: " + outputLocation);
                 }
             }
+            else
+                Console.WriteLine("There were no new titles to add.");
 
-            if (!outputGenerated)
-                Console.WriteLine("No output was generated. There were no new titles to add to the list.");
+            // Archive the input file.
+            ArchiveFile(csvFilepath);
         }
 
         /// <summary>
         /// Creates a DiscoveredProblemTitle based on bar (|) delimited data from a csv file.
         /// </summary>
         /// <param name="outputLineItem">CSV line item containing the '|' formated data from GA.</param>
+        /// <param name="reserveId">Unique identifier of the problem title.</param>
+        /// <param name="formatType">Format of the problem title.</param>
         /// <returns>DiscoveredProblemTitle</returns>
-        private static DiscoveredProblemTitle ConstructDiscoveredProblemTitleFromCsvFile(string outputLineItem, string titleId, string formatType)
+        private static DiscoveredProblemTitle ConstructDiscoveredProblemTitleFromCsvFile(string outputLineItem, string reserveId, string formatType)
         {
             var outputLineData = outputLineItem.Split('|');
 
             var positionInArray = Array.FindIndex(outputLineData, x => x.ToLower().Contains("applicationdescription"));
-            var applicationDescription = positionInArray > -1 ? new Version(outputLineData[positionInArray].Split(':')[1].Trim()) : new Version(_productionAppVersion);
+            var applicationDescription = positionInArray > -1
+                ? new Version(outputLineData[positionInArray].Split(':')[1].Trim())
+                : new Version(ProductionAppVersion);
 
             positionInArray = Array.FindIndex(outputLineData, x => x.ToLower().Contains("devicemodel"));
             var deviceModel = positionInArray > -1 ? outputLineData[positionInArray].Split(':')[1].Trim() : string.Empty;
@@ -243,7 +226,9 @@ namespace BookStructureEPUBExtractor
             var language = positionInArray > -1 ? outputLineData[positionInArray].Split(':')[1].Trim() : string.Empty;
 
             positionInArray = Array.FindIndex(outputLineData, x => x.ToLower().Contains("operatingsystemversion"));
-            var orperatingSystemVersion = positionInArray > -1 ? new Version(outputLineData[positionInArray].Split(':')[1].Trim()) : new Version("9.3.1");
+            var orperatingSystemVersion = positionInArray > -1
+                ? new Version(outputLineData[positionInArray].Split(':')[1].Trim())
+                : new Version("9.3.1");
 
             positionInArray = Array.FindIndex(outputLineData, x => x.ToLower().Contains("region"));
             var region = positionInArray > -1 ? outputLineData[positionInArray].Split(':')[1].Trim() : string.Empty;
@@ -251,7 +236,7 @@ namespace BookStructureEPUBExtractor
             positionInArray = Array.FindIndex(outputLineData, x => x.ToLower().Contains("errortype"));
             var errorType = positionInArray > -1 ? outputLineData[positionInArray].Split(':')[1].Trim() : string.Empty;
 
-            var problemTitle = new DiscoveredProblemTitle(GetTitleMetadata(titleId), applicationDescription, formatType)
+            var problemTitle = new DiscoveredProblemTitle(GetTitleMetadata(reserveId), applicationDescription, formatType)
             {
                 DeviceModel = deviceModel,
                 Language = language,
@@ -274,7 +259,9 @@ namespace BookStructureEPUBExtractor
             var outputLineData = outputLineItem.Split('|');
 
             var positionInArray = Array.FindIndex(outputLineData, x => x.ToLower().Contains("applicationdescription"));
-            var applicationDescription = positionInArray > -1 ? new Version(outputLineData[positionInArray].Split(':')[1].Trim()) : new Version(_productionAppVersion);
+            var applicationDescription = positionInArray > -1
+                ? new Version(outputLineData[positionInArray].Split(':')[1].Trim())
+                : new Version(ProductionAppVersion);
 
             positionInArray = Array.FindIndex(outputLineData, x => x.ToLower().Contains("devicemodel"));
             var deviceModel = positionInArray > -1 ? outputLineData[positionInArray].Split(':')[1].Trim() : string.Empty;
@@ -283,7 +270,9 @@ namespace BookStructureEPUBExtractor
             var language = positionInArray > -1 ? outputLineData[positionInArray].Split(':')[1].Trim() : string.Empty;
 
             positionInArray = Array.FindIndex(outputLineData, x => x.ToLower().Contains("operatingsystemversion"));
-            var orperatingSystemVersion = positionInArray > -1 ? new Version(outputLineData[positionInArray].Split(':')[1].Trim()) : new Version("9.3.1");
+            var orperatingSystemVersion = positionInArray > -1
+                ? new Version(outputLineData[positionInArray].Split(':')[1].Trim())
+                : new Version("9.3.1");
 
             positionInArray = Array.FindIndex(outputLineData, x => x.ToLower().Contains("region"));
             var region = positionInArray > -1 ? outputLineData[positionInArray].Split(':')[1].Trim() : string.Empty;
@@ -316,74 +305,42 @@ namespace BookStructureEPUBExtractor
         }
 
         /// <summary>
-        /// Given a valid directory, iterates through a text file to gather a list of discovered problem titles.
-        /// </summary>
-        /// <param name="fileDirectory">Text file directory containing a list of discovered problem titles in '|' format.</param>
-        /// <returns>A list of DiscoveredProblemTitles</returns>
-        private static IEnumerable<DiscoveredProblemTitle> ReadFileForDiscoveredProblemTitles(string fileDirectory)
-        {
-            var problemTitles = new List<DiscoveredProblemTitle>();
-
-            // Confirm the file and directory exist.
-            if (!File.Exists(fileDirectory))
-                throw new IOException("The specified file and/or directory does not exist: " + fileDirectory);
-
-            var reader = new StreamReader(File.OpenRead(fileDirectory));
-            while (!reader.EndOfStream)
-            {
-                var line = reader.ReadLine();
-                if (string.IsNullOrEmpty(line))
-                    break;
-                else
-                    problemTitles.Add(ConstructDiscoveredProblemTitleFromOutputFile(line));
-            }
-
-            return problemTitles;
-        }
-
-        /// <summary>
-        /// Properly reconstructs a DiscoveredProblemTitle from a line item of generated outputted problem title data.
-        /// </summary>
-        /// <param name="outputLineItem">Line item containing the outputted problem title in '|' format.</param>
-        /// <returns>DiscoveredProblemTitle</returns>
-        private static DiscoveredProblemTitle ConstructDiscoveredProblemTitleFromOutputFile(string outputLineItem)
-        {
-            var outputLineData = outputLineItem.Split('|');
-            
-            var problemTitle = new DiscoveredProblemTitle
-            {
-                Title = outputLineData[0].Substring(3).Trim(),
-                Crid = outputLineData[2].Trim(),
-                TitleId = outputLineData[3].Trim(),
-                FormatType = outputLineData[4].Trim(),
-                Publisher = outputLineData[5].Trim(),
-                AppVersion = new Version(outputLineData[6].Trim()),
-                OperatingSystemVersion = new Version(outputLineData[7].Trim()),
-                Language = outputLineData[8].Trim(),
-                Region = outputLineData[9].Trim(),
-                ErrorType = outputLineData[10].Trim()
-            };
-
-            return problemTitle;
-        }
-
-        /// <summary>
         /// Given a discoverable problem title's ID, calls the Metadata service to obtain additional metadata about the title.
         /// </summary>
-        /// <param name="titleId">Discoverable Problem Title's unique identifier.</param>
-        /// <returns>JSON formatted metadata pertaining to the passed in titleID.</returns>
-        private static string GetTitleMetadata(string titleId)
+        /// <param name="reserveId">Discoverable Problem Title's unique identifier.</param>
+        /// <returns>JSON formatted metadata pertaining to the passed in reserveId.</returns>
+        private static string GetTitleMetadata(string reserveId)
         {
-            var contents = string.Empty;
+            string contents;
             using (var client = new WebClient())
             {
                 client.Headers["Content-type"] = "application/json";
+                client.Encoding = Encoding.UTF8;
 
                 // Generate the correct URL (based on CRID)
-                contents = client.DownloadString(string.Format(_metadataEndpoint, titleId));
+                contents = client.DownloadString(string.Format(ConfigurationManager.AppSettings["MetadataEndpointUrl"], reserveId));
             }
 
             return contents;
+        }
+
+        /// <summary>
+        /// Moves a given file to the archive directory and appends a datetime stamp to it.
+        /// </summary>
+        /// <param name="fileToMove">Directory and filename of the file to archive.</param>
+        private static void ArchiveFile(string fileToMove)
+        {
+            var archiveDirectory = ConfigurationManager.AppSettings["ArchiveDirectory"];
+
+            if (File.Exists(fileToMove))
+                if (Directory.Exists(archiveDirectory))
+                    File.Move(fileToMove,
+                        Path.Combine(archiveDirectory,
+                            $"{DateTime.UtcNow:yyyyMMddHHmmss}-{Path.GetFileName(fileToMove)}"));
+                else
+                    Console.WriteLine($"Directory does not exists: {archiveDirectory}");
+            else
+                Console.WriteLine($"Could not find the following file to move: {fileToMove}");
         }
     }
 }
