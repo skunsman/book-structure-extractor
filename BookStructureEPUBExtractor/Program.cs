@@ -277,7 +277,7 @@ namespace BookStructureEPUBExtractor
             positionInArray = Array.FindIndex(outputLineData, x => x.ToLower().Contains("region"));
             var region = positionInArray > -1 ? outputLineData[positionInArray].Split(':')[1].Trim() : string.Empty;
 
-            positionInArray = Array.FindIndex(outputLineData, x => x.ToLower().Contains("errorType"));
+            positionInArray = Array.FindIndex(outputLineData, x => x.ToLower().Contains("errortype"));
             var errorType = positionInArray > -1 ? outputLineData[positionInArray].Split(':')[1].Trim() : string.Empty;
 
             positionInArray = Array.FindIndex(outputLineData, x => x.ToLower().Contains("sourceurl"));

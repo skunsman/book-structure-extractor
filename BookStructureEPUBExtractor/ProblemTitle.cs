@@ -106,7 +106,7 @@ namespace BookStructureEPUBExtractor
 
         public override string ToString()
         {
-            return $"- {Data} | {base.ToString()}".TrimEnd(' ', '|');
+            return $"- {Data} | {base.ToString()} | {ErrorType}".TrimEnd(' ', '|');
         }
 
         #endregion
